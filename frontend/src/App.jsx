@@ -51,7 +51,7 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/chat', {
+      const response = await fetch('https://womanjet.onrender.com/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: userText }),
@@ -103,7 +103,7 @@ function App() {
 
     try {
       // Backend Stripe endpoint'ine istek atıyoruz
-      const res = await fetch('http://127.0.0.1:8000/api/create-payment-intent', {
+      const res = await fetch('https://womanjet.onrender.com/api/create-payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
