@@ -75,17 +75,10 @@ CARS_DATABASE = [
 def calculate_flight_and_recommend(message: str):
     """
     Kullanıcının mesajından kisi sayısını ve uçuş bilgilerini analiz ederek 
-    uçuş süresi/iniş saati hesaplar ve araç önerir.
+    uçuş süresi/iniş saati hesaplar ve araç önerir. Alakasız mesajları yakalar.
     """
     msg_lower = message.lower()
     
-    # Kişi sayısı belirleme
-    person_count = 4 # varsayılan
-    for num in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
-        if f"{num} kiş" in msg_lower or f"{num} kis" in msg_lower:
-            person_count = num
-            break
-
     # Ülke / Şehir ve Uçuş Süreleri Havuzu (Saat cinsinden)
     flight_durations = {
         "ingiltere": ("İngiltere", 4.25),
@@ -101,6 +94,23 @@ def calculate_flight_and_recommend(message: str):
         "hollanda": ("Hollanda", 3.75),
         "amsterdam": ("Hollanda (Amsterdam)", 3.75)
     }
+
+    # Transfer veya araçla ilgili temel anahtar kelimeler
+    transfer_keywords = ["araç", "transfer", "havalimanı", "uçak", "uçağım", "istiyorum", "kisi", "kişilik", "antalya", "kemer", "belek"]
+    
+    # Eğer mesaj çok kısa ve alakasızsa (örn: "aa", "merhaba", rastgele harfler) ve hiçbir havacılık/transfer terimi içermiyorsa uyarı ver
+    has_keyword = any(kw in msg_lower for kw in flight_durations.keys()) or any(kw in msg_lower for kw in transfer_keywords) or re.search(r'\d{1,2}[:.]\d{2}', message)
+    
+    if len(message.strip()) < 4 or not has_keyword:
+        bot_response = "Yanlış veya anlaşılmayan bir talep girdiniz. Lütfen havalimanı transferi, kalkış yeri ve saat bilgilerinizi tekrar yazınız. (Örn: Antalya havalimanından 4 kişilik araç istiyorum)"
+        return bot_response, CARS_DATABASE
+
+    # Kişi sayısı belirleme
+    person_count = 4 # varsayılan
+    for num in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
+        if f"{num} kiş" in msg_lower or f"{num} kis" in msg_lower:
+            person_count = num
+            break
 
     detected_location = None
     flight_time_hours = 4.0 # varsayılan uçuş süresi
