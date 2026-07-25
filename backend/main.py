@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import stripe
+import re
 
 app = FastAPI(title="WomanJET VIP Transfer API")
 
@@ -72,10 +73,11 @@ CARS_DATABASE = [
         "features": ["PlayStation 5", "Free Wi-Fi"]
     }
 ]
+
 def calculate_flight_and_recommend(message: str):
     """
-    Kullanıcının mesajından kisi sayısını ve uçuş bilgilerini analiz ederek 
-    uçuş süresi/iniş saati hesaplar ve araç önerir. Alakasız mesajları yakalar.
+    Kullanıcının mesajından kisi sayısını, kalkış yerini, varış yerini ve uçuş saatini 
+    analiz ederek uçuş süresi/iniş saati hesaplar ve araç önerir. Alakasız mesajları yakalar.
     """
     msg_lower = message.lower()
     
@@ -96,10 +98,13 @@ def calculate_flight_and_recommend(message: str):
     }
 
     # Transfer veya araçla ilgili temel anahtar kelimeler
-    transfer_keywords = ["araç", "transfer", "havalimanı", "uçak", "uçağım", "istiyorum", "kisi", "kişilik", "antalya", "kemer", "belek"]
+    transfer_keywords = ["araç", "transfer", "havalimanı", "uçak", "uçağım", "istiyorum", "kisi", "kişilik", "antalya", "kemer", "belek", "konya", "ineceğim", "istanbul", "ankara"]
     
-    # Eğer mesaj çok kısa ve alakasızsa (örn: "aa", "merhaba", rastgele harfler) ve hiçbir havacılık/transfer terimi içermiyorsa uyarı ver
-    has_keyword = any(kw in msg_lower for kw in flight_durations.keys()) or any(kw in msg_lower for kw in transfer_keywords) or re.search(r'\d{1,2}[:.]\d{2}', message)
+    # Saat tespiti (Örn: 15.00, 15:00, 15:30 vb.)
+    time_match = re.search(r'(\d{1,2})[:.](\d{2})', message)
+    
+    # Alakasız mesaj kontrolü
+    has_keyword = any(kw in msg_lower for kw in flight_durations.keys()) or any(kw in msg_lower for kw in transfer_keywords) or time_match
     
     if len(message.strip()) < 4 or not has_keyword:
         bot_response = "Yanlış veya anlaşılmayan bir talep girdiniz. Lütfen havalimanı transferi, kalkış yeri ve saat bilgilerinizi tekrar yazınız. (Örn: Antalya havalimanından 4 kişilik araç istiyorum)"
@@ -121,10 +126,17 @@ def calculate_flight_and_recommend(message: str):
             flight_time_hours = duration
             break
 
-    # Saat tespiti (Örn: 14:00 veya 14.00)
-    import re
-    time_match = re.search(r'(\d{1,2})[:.](\d{2})', message)
-    
+    # Varış şehri tespiti (Dinamik)
+    arrival_city = "Antalya"
+    if "konya" in msg_lower:
+        arrival_city = "Konya"
+    elif "istanbul" in msg_lower:
+        arrival_city = "İstanbul"
+    elif "ankara" in msg_lower:
+        arrival_city = "Ankara"
+    elif "antalya" in msg_lower:
+        arrival_city = "Antalya"
+
     bot_response = ""
     
     if detected_location and time_match:
@@ -149,14 +161,15 @@ def calculate_flight_and_recommend(message: str):
         dur_text = f"{hours_str} saat {mins_str} dakika" if mins_str > 0 else f"{hours_str} saat"
 
         bot_response = (
-            f"Talebinizi aldım! {detected_location} - Antalya uçuşu yaklaşık {dur_text} sürmektedir. "
-            f"Saat {dep_hour:02d}:{dep_min:02d} kalkışlı uçağınızın tahmini Antalya Havalimanı iniş saati {land_hour:02d}:{land_min:02d}'dir. "
+            f"Talebinizi aldım! {detected_location} - {arrival_city} uçuşu yaklaşık {dur_text} sürmektedir. "
+            f"Saat {dep_hour:02d}:{dep_min:02d} kalkışlı uçağınızın tahmini {arrival_city} Havalimanı iniş saati {land_hour:02d}:{land_min:02d}'dir. "
             f"Bagaj ve pasaport işlemleri göz önüne alınarak VIP aracımız saat {pickup_hour:02d}:{pickup_min:02d} itibarıyla "
             f"gelen yolcu çıkışında hazır olacaktır.\n\n"
             f"{person_count} kişilik grubunuz için en uygun araçlarımızı aşağıda listeledim."
         )
     else:
-        bot_response = f"Talebinizi aldım! Antalya Havalimanı transferiniz için {person_count} kişilik VIP araçlarımızı aşağıda listeledim."
+        loc_text = detected_location if detected_location else "Antalya"
+        bot_response = f"Talebinizi aldım! {loc_text} - {arrival_city} transferiniz için {person_count} kişilik VIP araçlarımızı aşağıda listeledim."
 
     # Kişi sayısına göre araç filtreleme
     recommended = [car for car in CARS_DATABASE if car["capacity"] >= person_count]
