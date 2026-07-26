@@ -92,10 +92,14 @@ def calculate_flight_and_recommend(message: str):
             person_count = num
             break
 
-    # Şehir tespiti
+   # Şehir tespiti (Türkçe büyük/küçük harf duyarlılığını önlemek için replace ekleyelim)
     detected_city = "Antalya" # varsayılan
+    # Türkçe karakter sorununu en net çözen yöntem
+   # Şehir tespiti için güvenli metin temizleme
+    msg_cleaned = message.lower().replace('i̇', 'i').replace('ı', 'i').replace('i', 'i')
+    
     for c in cities:
-        if c in msg_lower:
+        if c in msg_cleaned:
             detected_city = c.capitalize()
             break
 
