@@ -8,7 +8,6 @@ import re
 
 app = FastAPI(title="WomanJET VIP Transfer API")
 
-# CORS ayarları (React frontend bağlantısı için)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,10 +16,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Stripe API Anahtarı (Test ortamı için örnek key)
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "sk_test_51Mz...")
 
-# Veri Modelleri
 class ChatRequest(BaseModel):
     message: str
 
@@ -28,7 +25,6 @@ class PaymentRequest(BaseModel):
     car_name: str
     amount_eur: float
 
-# Örnek Araç Veritabanı (Mock verisi ile senkronize edildi)
 CARS_DATABASE = [
     {
         "id": 1,
@@ -75,104 +71,80 @@ CARS_DATABASE = [
 ]
 
 def calculate_flight_and_recommend(message: str):
-    """
-    Kullanıcının mesajından kisi sayısını, kalkış yerini, varış yerini ve uçuş saatini 
-    analiz ederek uçuş süresi/iniş saati hesaplar ve araç önerir. Alakasız mesajları yakalar.
-    """
     msg_lower = message.lower()
     
-    # Ülke / Şehir ve Uçuş Süreleri Havuzu (Saat cinsinden)
-    flight_durations = {
-        "ingiltere": ("İngiltere", 4.25),
-        "london": ("İngiltere (Londra)", 4.25),
-        "stansted": ("İngiltere (London Stansted)", 4.25),
-        "almanya": ("Almanya", 3.5),
-        "frankfurt": ("Almanya (Frankfurt)", 3.5),
-        "berlin": ("Almanya (Berlin)", 3.5),
-        "rusya": ("Rusya", 4.5),
-        "moskova": ("Rusya (Moskova)", 4.5),
-        "fransa": ("Fransa", 4.0),
-        "paris": ("Fransa (Paris)", 4.0),
-        "hollanda": ("Hollanda", 3.75),
-        "amsterdam": ("Hollanda (Amsterdam)", 3.75)
-    }
-
-    # Transfer veya araçla ilgili temel anahtar kelimeler
-    transfer_keywords = ["araç", "transfer", "havalimanı", "uçak", "uçağım", "istiyorum", "kisi", "kişilik", "antalya", "kemer", "belek", "konya", "ineceğim", "istanbul", "ankara"]
+    # Şehirler
+    cities = ["istanbul", "ankara", "konya", "antalya", "izmir", "bursa"]
     
-    # Saat tespiti (Örn: 15.00, 15:00, 15:30 vb.)
+    transfer_keywords = ["araç", "transfer", "havalimanı", "uçak", "uçağım", "istiyorum", "kisi", "kişilik", "kemer", "belek", "koltuk", "bar", "masaj", "wifi", "şehir", "içi"]
     time_match = re.search(r'(\d{1,2})[:.](\d{2})', message)
     
-    # Alakasız mesaj kontrolü
-    has_keyword = any(kw in msg_lower for kw in flight_durations.keys()) or any(kw in msg_lower for kw in transfer_keywords) or time_match
+    has_keyword = any(c in msg_lower for c in cities) or any(kw in msg_lower for kw in transfer_keywords) or time_match
     
-    if len(message.strip()) < 4 or not has_keyword:
-        bot_response = "Yanlış veya anlaşılmayan bir talep girdiniz. Lütfen havalimanı transferi, kalkış yeri ve saat bilgilerinizi tekrar yazınız. (Örn: Antalya havalimanından 4 kişilik araç istiyorum)"
+    if len(message.strip()) < 2 or not has_keyword:
+        bot_response = "Yanlış veya anlaşılmayan bir talep girdiniz. Lütfen şehir ve kişi sayınızı belirtiniz. (Örn: İstanbul'da 2 kişilik bebek koltuklu araç istiyorum)"
         return bot_response, CARS_DATABASE
 
     # Kişi sayısı belirleme
     person_count = 4 # varsayılan
     for num in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
-        if f"{num} kiş" in msg_lower or f"{num} kis" in msg_lower:
+        if f"{num} kiş" in msg_lower or f"{num} kis" in msg_lower or f"{num} kişi" in msg_lower or f"{num} ins" in msg_lower:
             person_count = num
             break
 
-    detected_location = None
-    flight_time_hours = 4.0 # varsayılan uçuş süresi
-
-    for key, (loc_name, duration) in flight_durations.items():
-        if key in msg_lower:
-            detected_location = loc_name
-            flight_time_hours = duration
+    # Şehir tespiti
+    detected_city = "Antalya" # varsayılan
+    for c in cities:
+        if c in msg_lower:
+            detected_city = c.capitalize()
             break
 
-    # Varış şehri tespiti (Dinamik)
-    arrival_city = "Antalya"
-    if "konya" in msg_lower:
-        arrival_city = "Konya"
-    elif "istanbul" in msg_lower:
-        arrival_city = "İstanbul"
-    elif "ankara" in msg_lower:
-        arrival_city = "Ankara"
-    elif "antalya" in msg_lower:
-        arrival_city = "Antalya"
+    # Özellik Filtreleme (Bebek koltuğu vb.)
+    required_feature = None
+    if "bebek koltuğ" in msg_lower or "koltuk" in msg_lower:
+        required_feature = "Bebek Koltuğu"
+    elif "masaj" in msg_lower:
+        required_feature = "Massage Seats"
+    elif "mini bar" in msg_lower or "bar" in msg_lower:
+        required_feature = "Mini Bar"
+    elif "playstation" in msg_lower or "ps5" in msg_lower:
+        required_feature = "PlayStation 5"
+    elif "apple tv" in msg_lower:
+        required_feature = "Apple TV"
+    elif "ses sistemi" in msg_lower:
+        required_feature = "Sound System"
 
     bot_response = ""
     
-    if detected_location and time_match:
+    # Eğer uçuş saati VARSA uçuş hesabı yap
+    if time_match and ("uçak" in msg_lower or "uçağım" in msg_lower or "havalimanı" in msg_lower):
         dep_hour = int(time_match.group(1))
         dep_min = int(time_match.group(2))
-        
-        # İniş saati hesaplama (Kalkış saati + Uçuş süresi)
-        total_dep_minutes = dep_hour * 60 + dep_min
-        flight_minutes = int(flight_time_hours * 60)
-        landing_total_minutes = (total_dep_minutes + flight_minutes) % (24 * 60)
-        
-        land_hour = landing_total_minutes // 60
-        land_min = landing_total_minutes % 60
-        
-        # Karşılama saati (+45 dk pasaport/bagaj)
-        pickup_total_minutes = (landing_total_minutes + 45) % (24 * 60)
-        pickup_hour = pickup_total_minutes // 60
-        pickup_min = pickup_total_minutes % 60
-        
-        hours_str = int(flight_time_hours)
-        mins_str = int((flight_time_hours - hours_str) * 60)
-        dur_text = f"{hours_str} saat {mins_str} dakika" if mins_str > 0 else f"{hours_str} saat"
-
         bot_response = (
-            f"Talebinizi aldım! {detected_location} - {arrival_city} uçuşu yaklaşık {dur_text} sürmektedir. "
-            f"Saat {dep_hour:02d}:{dep_min:02d} kalkışlı uçağınızın tahmini {arrival_city} Havalimanı iniş saati {land_hour:02d}:{land_min:02d}'dir. "
-            f"Bagaj ve pasaport işlemleri göz önüne alınarak VIP aracımız saat {pickup_hour:02d}:{pickup_min:02d} itibarıyla "
-            f"gelen yolcu çıkışında hazır olacaktır.\n\n"
+            f"Talebinizi aldım! {detected_city} kalkışlı uçağınız için transfer planı oluşturulmuştur. "
+            f"Saat {dep_hour:02d}:{dep_min:02d} itibarıyla VIP aracımız hazır olacaktır.\n\n"
             f"{person_count} kişilik grubunuz için en uygun araçlarımızı aşağıda listeledim."
         )
     else:
-        loc_text = detected_location if detected_location else "Antalya"
-        bot_response = f"Talebinizi aldım! {loc_text} - {arrival_city} transferiniz için {person_count} kişilik VIP araçlarımızı aşağıda listeledim."
+        # Saat yoksa veya sadece şehir içi araç isteniyorsa direkt şehir içi yanıtı ver
+        feature_text = f" ve {required_feature} içeren" if required_feature else ""
+        bot_response = (
+            f"Talebinizi aldım! {detected_city} içinde kullanımınız için {person_count} kişilik{feature_text} VIP araçlarımızı aşağıda listeledim."
+        )
 
-    # Kişi sayısına göre araç filtreleme
-    recommended = [car for car in CARS_DATABASE if car["capacity"] >= person_count]
+    # Araç Filtreleme (Kapasite + Özellik)
+    recommended = []
+    for car in CARS_DATABASE:
+        if car["capacity"] >= person_count:
+            if required_feature:
+                car_features_lower = [f.lower() for f in car["features"]]
+                if required_feature.lower() in car_features_lower:
+                    recommended.append(car)
+            else:
+                recommended.append(car)
+
+    if not recommended:
+        recommended = [car for car in CARS_DATABASE if car["capacity"] >= person_count]
     if not recommended:
         recommended = CARS_DATABASE
 
