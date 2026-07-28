@@ -82,11 +82,11 @@ def calculate_flight_and_recommend(message: str):
     has_keyword = any(c in msg_lower for c in cities) or any(kw in msg_lower for kw in transfer_keywords) or time_match
     
     if len(message.strip()) < 2 or not has_keyword:
-        bot_response = "Yanlış veya anlaşılmayan bir talep girdiniz. Lütfen şehir ve kişi sayınızı belirtiniz. (Örn: İngiltere'den Ankara'ya saat 16.00 uçağım var)"
+        bot_response = "Yanlış veya anlaşılmayan bir talep girdiniz. Lütfen talebinizi belirtiniz."
         return bot_response, CARS_DATABASE
 
-    # Kişi sayısı belirleme
-    person_count = 4 # varsayılan
+    # Kişi sayısı tespiti (Eğer kullanıcı yazdıysa yakala, yazmadıysa None bırak)
+    person_count = None
     for num in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
         if f"{num} kiş" in msg_lower or f"{num} kis" in msg_lower or f"{num} kişi" in msg_lower or f"{num} ins" in msg_lower:
             person_count = num
@@ -96,7 +96,7 @@ def calculate_flight_and_recommend(message: str):
     msg_cleaned = message.lower().replace('i̇', 'i').replace('ı', 'i')
     
     # Varış Şehri Tespiti
-    arrival_city = "Antalya"     # Varsayılan varış
+    arrival_city = "Antalya"
     if "ankara" in msg_cleaned:
         arrival_city = "Ankara"
     elif "istanbul" in msg_cleaned:
@@ -132,14 +132,10 @@ def calculate_flight_and_recommend(message: str):
         dep_hour = int(time_match.group(1))
         dep_min = int(time_match.group(2))
         
-        # Uçuş süresi (Örn: İngiltere'den kalkış ortalama 4 saat sürer diyelim)
         flight_duration_hours = 4
         flight_duration_mins = 0
-        
-        # Havalimanı pasaport ve bagaj işlemleri süresi
         baggage_customs_mins = 45
         
-        # Toplam dakika hesabı
         total_dep_mins = dep_hour * 60 + dep_min
         total_flight_mins = flight_duration_hours * 60 + flight_duration_mins
         
@@ -151,32 +147,37 @@ def calculate_flight_and_recommend(message: str):
         transfer_hour = (transfer_total_mins // 60) % 24
         transfer_min = transfer_total_mins % 60
         
+        person_text = f" {person_count} kişilik grubunuz için" if person_count else ""
         bot_response = (
             f"Talebinizi aldım! Belirttiğiniz saat {dep_hour:02d}:{dep_min:02d} kalkışlı uçuşunuz için hesaplama yapılmıştır:\n"
             f"- Uçuş süresi yaklaşık {flight_duration_hours} saat sürecek ve {arrival_city} havalimanına saat {landing_hour:02d}:{landing_min:02d} civarında iniş yapacaksınız.\n"
             f"- İniş sonrasında pasaport ve bagaj işlemleri için {baggage_customs_mins} dakika pay bırakılmıştır.\n"
             f"- Bu doğrultuda VIP aracımız **saat {transfer_hour:02d}:{transfer_min:02d} itibarıyla** kapıda hazır olacaktır.\n\n"
-            f"{person_count} kişilik grubunuz için en uygun araçlarımızı aşağıda listeledim."
+            f"{person_text} en uygun araçlarımızı aşağıda listeledim."
         )
     else:
-        feature_text = f" ve {required_feature} içeren" if required_feature else ""
+        person_text = f" {person_count} kişilik ve" if person_count else ""
+        feature_text = f" {required_feature} içeren" if required_feature else ""
         bot_response = (
-            f"Talebinizi aldım! {arrival_city} içinde kullanımınız için {person_count} kişilik{feature_text} VIP araçlarımızı aşağıda listeledim."
+            f"Talebinizi aldım! {arrival_city} içinde kullanımınız için{person_text}{feature_text} VIP araçlarımızı aşağıda listeledim."
         )
 
-    # Araç Filtreleme
+    # Araç Filtreleme (Sadece kişi sayısı belirtildiyse kapasiteye göre filtrele)
     recommended = []
     for car in CARS_DATABASE:
-        if car["capacity"] >= person_count:
-            if required_feature:
-                car_features_lower = [f.lower() for f in car["features"]]
-                if required_feature.lower() in car_features_lower:
-                    recommended.append(car)
-            else:
-                recommended.append(car)
+        match_person = True
+        if person_count is not None and car["capacity"] < person_count:
+            match_person = False
+            
+        match_feature = True
+        if required_feature:
+            car_features_lower = [f.lower() for f in car["features"]]
+            if required_feature.lower() not in car_features_lower:
+                match_feature = False
+                
+        if match_person and match_feature:
+            recommended.append(car)
 
-    if not recommended:
-        recommended = [car for car in CARS_DATABASE if car["capacity"] >= person_count]
     if not recommended:
         recommended = CARS_DATABASE
 
