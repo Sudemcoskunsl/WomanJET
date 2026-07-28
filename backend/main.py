@@ -82,7 +82,7 @@ def calculate_flight_and_recommend(message: str):
     has_keyword = any(c in msg_lower for c in cities) or any(kw in msg_lower for kw in transfer_keywords) or time_match
     
     if len(message.strip()) < 2 or not has_keyword:
-        bot_response = "Yanlış veya anlaşılmayan bir talep girdiniz. Lütfen şehir ve kişi sayınızı belirtiniz. (Örn: İstanbul'da 2 kişilik bebek koltuklu araç istiyorum)"
+        bot_response = "Yanlış veya anlaşılmayan bir talep girdiniz. Lütfen şehir ve kişi sayınızı belirtiniz. (Örn: İngiltere'den Ankara'ya saat 16.00 uçağım var)"
         return bot_response, CARS_DATABASE
 
     # Kişi sayısı belirleme
@@ -92,12 +92,11 @@ def calculate_flight_and_recommend(message: str):
             person_count = num
             break
 
-    # Metin temizleme (Türkçe karakterler için)
-    msg_cleaned = message.lower().replace('i̇', 'i').replace('ı', 'i').replace('i', 'i')
+    # Metin temizleme
+    msg_cleaned = message.lower().replace('i̇', 'i').replace('ı', 'i')
     
     # Varış Şehri Tespiti
     arrival_city = "Antalya"     # Varsayılan varış
-    
     if "ankara" in msg_cleaned:
         arrival_city = "Ankara"
     elif "istanbul" in msg_cleaned:
@@ -111,7 +110,7 @@ def calculate_flight_and_recommend(message: str):
     elif "bursa" in msg_cleaned:
         arrival_city = "Bursa"
 
-    # Özellik Filtreleme (Bebek koltuğu vb.)
+    # Özellik Filtreleme
     required_feature = None
     if "bebek koltuğ" in msg_lower or "koltuk" in msg_lower:
         required_feature = "Bebek Koltuğu"
@@ -128,29 +127,44 @@ def calculate_flight_and_recommend(message: str):
 
     bot_response = ""
     
-    # Eğer uçuş saati VARSA uçuş ve iniş hesabı yap
-    if time_match and ("uçak" in msg_lower or "uçağım" in msg_lower or "havalimanı" in msg_lower):
+    # Uçuş ve Detaylı Süre Hesaplama Mantığı
+    if time_match and ("uçak" in msg_lower or "uçağım" in msg_lower or "havalimanı" in msg_lower or "ingiltere" in msg_lower):
         dep_hour = int(time_match.group(1))
         dep_min = int(time_match.group(2))
         
-        # 3.5 saat uçuş + 45 dk bagaj/pasaport süresi ekleme hesabı
-        total_min = dep_hour * 60 + dep_min + 210 + 45 
-        arr_hour = (total_min // 60) % 24
-        arr_min = total_min % 60
+        # Uçuş süresi (Örn: İngiltere'den kalkış ortalama 4 saat sürer diyelim)
+        flight_duration_hours = 4
+        flight_duration_mins = 0
+        
+        # Havalimanı pasaport ve bagaj işlemleri süresi
+        baggage_customs_mins = 45
+        
+        # Toplam dakika hesabı
+        total_dep_mins = dep_hour * 60 + dep_min
+        total_flight_mins = flight_duration_hours * 60 + flight_duration_mins
+        
+        landing_total_mins = total_dep_mins + total_flight_mins
+        landing_hour = (landing_total_mins // 60) % 24
+        landing_min = landing_total_mins % 60
+        
+        transfer_total_mins = landing_total_mins + baggage_customs_mins
+        transfer_hour = (transfer_total_mins // 60) % 24
+        transfer_min = transfer_total_mins % 60
         
         bot_response = (
-            f"Talebinizi aldım! Uçağınız kalktıktan sonra {arrival_city} havalimanına iniş yapacaktır. "
-            f"Pasaport ve bagaj işlemleri sonrasında saat {arr_hour:02d}:{arr_min:02d} itibarıyla VIP aracımız hazır olacaktır.\n\n"
+            f"Talebinizi aldım! Belirttiğiniz saat {dep_hour:02d}:{dep_min:02d} kalkışlı uçuşunuz için hesaplama yapılmıştır:\n"
+            f"- Uçuş süresi yaklaşık {flight_duration_hours} saat sürecek ve {arrival_city} havalimanına saat {landing_hour:02d}:{landing_min:02d} civarında iniş yapacaksınız.\n"
+            f"- İniş sonrasında pasaport ve bagaj işlemleri için {baggage_customs_mins} dakika pay bırakılmıştır.\n"
+            f"- Bu doğrultuda VIP aracımız **saat {transfer_hour:02d}:{transfer_min:02d} itibarıyla** kapıda hazır olacaktır.\n\n"
             f"{person_count} kişilik grubunuz için en uygun araçlarımızı aşağıda listeledim."
         )
     else:
-        # Saat yoksa veya sadece şehir içi araç isteniyorsa direkt şehir içi yanıtı ver
         feature_text = f" ve {required_feature} içeren" if required_feature else ""
         bot_response = (
             f"Talebinizi aldım! {arrival_city} içinde kullanımınız için {person_count} kişilik{feature_text} VIP araçlarımızı aşağıda listeledim."
         )
 
-    # Araç Filtreleme (Kapasite + Özellik)
+    # Araç Filtreleme
     recommended = []
     for car in CARS_DATABASE:
         if car["capacity"] >= person_count:
