@@ -92,16 +92,24 @@ def calculate_flight_and_recommend(message: str):
             person_count = num
             break
 
-   # Şehir tespiti (Türkçe büyük/küçük harf duyarlılığını önlemek için replace ekleyelim)
-    detected_city = "Antalya" # varsayılan
-    # Türkçe karakter sorununu en net çözen yöntem
-   # Şehir tespiti için güvenli metin temizleme
+    # Metin temizleme (Türkçe karakterler için)
     msg_cleaned = message.lower().replace('i̇', 'i').replace('ı', 'i').replace('i', 'i')
     
-    for c in cities:
-        if c in msg_cleaned:
-            detected_city = c.capitalize()
-            break
+    # Varış Şehri Tespiti
+    arrival_city = "Antalya"     # Varsayılan varış
+    
+    if "ankara" in msg_cleaned:
+        arrival_city = "Ankara"
+    elif "istanbul" in msg_cleaned:
+        arrival_city = "İstanbul"
+    elif "antalya" in msg_cleaned:
+        arrival_city = "Antalya"
+    elif "konya" in msg_cleaned:
+        arrival_city = "Konya"
+    elif "izmir" in msg_cleaned:
+        arrival_city = "İzmir"
+    elif "bursa" in msg_cleaned:
+        arrival_city = "Bursa"
 
     # Özellik Filtreleme (Bebek koltuğu vb.)
     required_feature = None
@@ -120,20 +128,26 @@ def calculate_flight_and_recommend(message: str):
 
     bot_response = ""
     
-    # Eğer uçuş saati VARSA uçuş hesabı yap
+    # Eğer uçuş saati VARSA uçuş ve iniş hesabı yap
     if time_match and ("uçak" in msg_lower or "uçağım" in msg_lower or "havalimanı" in msg_lower):
         dep_hour = int(time_match.group(1))
         dep_min = int(time_match.group(2))
+        
+        # 3.5 saat uçuş + 45 dk bagaj/pasaport süresi ekleme hesabı
+        total_min = dep_hour * 60 + dep_min + 210 + 45 
+        arr_hour = (total_min // 60) % 24
+        arr_min = total_min % 60
+        
         bot_response = (
-            f"Talebinizi aldım! {detected_city} kalkışlı uçağınız için transfer planı oluşturulmuştur. "
-            f"Saat {dep_hour:02d}:{dep_min:02d} itibarıyla VIP aracımız hazır olacaktır.\n\n"
+            f"Talebinizi aldım! Uçağınız kalktıktan sonra {arrival_city} havalimanına iniş yapacaktır. "
+            f"Pasaport ve bagaj işlemleri sonrasında saat {arr_hour:02d}:{arr_min:02d} itibarıyla VIP aracımız hazır olacaktır.\n\n"
             f"{person_count} kişilik grubunuz için en uygun araçlarımızı aşağıda listeledim."
         )
     else:
         # Saat yoksa veya sadece şehir içi araç isteniyorsa direkt şehir içi yanıtı ver
         feature_text = f" ve {required_feature} içeren" if required_feature else ""
         bot_response = (
-            f"Talebinizi aldım! {detected_city} içinde kullanımınız için {person_count} kişilik{feature_text} VIP araçlarımızı aşağıda listeledim."
+            f"Talebinizi aldım! {arrival_city} içinde kullanımınız için {person_count} kişilik{feature_text} VIP araçlarımızı aşağıda listeledim."
         )
 
     # Araç Filtreleme (Kapasite + Özellik)
